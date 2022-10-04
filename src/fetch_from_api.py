@@ -66,10 +66,118 @@ def get_who_life_expectancy() -> pd.DataFrame:
     for col in must_be_null:
         assert df[col].isnull().all(), f'Columns {must_be_null} contains non-null values'
 
-    df.drop(must_be_null + ['TimeDimensionBegin', 'TimeDimensionEnd', 'IndicatorCode', 'TimeDimType', 'Dim1Type'],
+    assert (df.TimeDim.astype(float) == df.TimeDimensionValue.astype(float)).all()
+    df.drop(must_be_null + ['TimeDimensionBegin',
+                            'TimeDimensionEnd',
+                            'IndicatorCode',
+                            'TimeDimType',
+                            'Dim1Type',
+                            'TimeDimensionValue',
+                            'Value',
+                            'Date'],
             inplace=True, axis=1)
     return df
 
+
+def get_who_indicator2(indicator: str, index: str | None = None) -> pd.DataFrame:
+    """
+    Fetches and returns the life expectancy information from the GHO OData API.
+    :return: a dataframe with the life expectancy information.
+    """
+    df = get_who_table(f'https://ghoapi.azureedge.net/api/{indicator}', index)
+    # assert (df.IndicatorCode == indicator).all()
+    assert (df.TimeDimType == 'YEAR').all()
+    # assert (df.Dim1Type == 'SEX').all()
+    must_be_null = ['Dim2Type',
+                    'Dim2',
+                    'Dim3Type',
+                    'Dim3',
+                    'Comments']
+
+    for col in must_be_null:
+        assert df[col].isnull().all(), f'Columns {must_be_null} contains non-null values'
+
+    assert (df.TimeDim.astype(float) == df.TimeDimensionValue.astype(float)).all()
+    df.drop(must_be_null + ['TimeDimensionBegin',
+                            'TimeDimensionEnd',
+                            'IndicatorCode',
+                            'TimeDimType',
+                            'Dim1Type',
+                            'TimeDimensionValue',
+                            'Value',
+                            'Date',
+                            'DataSourceDimType',
+                            'DataSourceDim',
+                            'Low',
+                            'High'],
+            inplace=True, axis=1)
+    return df
+
+
+def get_who_indicator(indicator: str, index: str | None = None) -> pd.DataFrame:
+    """
+    Fetches and returns the life expectancy information from the GHO OData API.
+    :return: a dataframe with the life expectancy information.
+    """
+    df = get_who_table(f'https://ghoapi.azureedge.net/api/{indicator}', index)
+    assert (df.IndicatorCode == indicator).all()
+    assert (df.TimeDimType == 'YEAR').all()
+
+    assert (df.TimeDim.astype(float) == df.TimeDimensionValue.astype(float)).all()
+    df = df[df.SpatialDimType == 'COUNTRY']
+    df.dropna(axis=1, how='all', inplace=True)
+    return df
+
+
+def get_who_dataset() -> pd.DataFrame:
+    def drop_btsx_inplace(df: pd.DataFrame, column_name: str) -> pd.DataFrame:
+        df = df[df[column_name].isin(['MLE', 'FMLE'])]
+        return df
+
+    indicator_to_code = {'life expectancy': 'WHOSIS_000001',
+                         'adult mortality': 'WHOSIS_000004',
+                         'infant deaths': 'CM_02',
+                         'alcohol': 'SA_0000001400',
+                         'measles': 'WHS3_62',
+                         'bmi': 'NCD_BMI_MEAN',
+                         'under-five deaths': 'CM_01',
+                         'polio': 'WHS3_49',
+                         'diphtheria': 'WHS4_100',
+                         'HIV/AIDS': 'WHS2_138',
+                         'thinness  1-19 years': 'NCD_BMI_MINUS2C'
+                         }
+
+    indicators: dict[str, pd.DataFrame] = {indicator_name: get_who_indicator(indicator_code, index='Id') for
+                                           indicator_name, indicator_code in
+                                           indicator_to_code.items()}
+
+    cols_to_be_dropped = ['IndicatorCode',
+                          'SpatialDimType',
+                          'TimeDimType',
+                          'Value',
+                          'Date',
+                          'TimeDimensionValue',
+                          'TimeDimensionBegin',
+                          'TimeDimensionEnd']
+
+    for ind in indicators.values():
+        ind.drop(cols_to_be_dropped, inplace=True, axis=1)
+
+    indicators['life expectancy'].drop(['Dim1Type'], inplace=True, axis=1)
+    indicators['life expectancy'] = drop_btsx_inplace(indicators['life expectancy'], 'Dim1')
+
+    indicators['adult mortality'].drop(['Dim1Type'], inplace=True, axis=1)
+    indicators['adult mortality'] = drop_btsx_inplace(indicators['adult mortality'], 'Dim1')
+
+    indicators['infant deaths'].drop(['Dim1Type', 'Low', 'High'], inplace=True, axis=1)
+    indicators['infant deaths'] = drop_btsx_inplace(indicators['infant deaths'], 'Dim1')
+
+    indicators['alcohol'] = indicators['alcohol'][indicators['alcohol'].Dim1 == 'SA_TOTAL']
+    indicators['alcohol'].drop(['Dim1Type', 'Low', 'High', 'Dim1', 'DataSourceDim', 'DataSourceDimType'], inplace=True,
+                               axis=1)
+
+    indicators['bmi'].drop(['Dim1Type', 'Dim2Type', 'Dim2', 'Low', 'High', 'Comments'], inplace=True, axis=1)
+    indicators['bmi'] = drop_btsx_inplace(indicators['bmi'], 'Dim1')
 
 def main():
     """
@@ -80,6 +188,7 @@ def main():
     at birth" indicator includes dimensions for country, year and sex.
     """
     who_indicators = get_who_indicators()
+    who_indicators.to_csv('indicators.csv')
     lang_values = who_indicators.Language.unique()
     assert list(lang_values) == ['EN']
     name_values = who_indicators.IndicatorName.unique()
@@ -88,7 +197,7 @@ def main():
     who_dimensions = get_who_dimensions()
 
     life_exp = get_who_life_expectancy()
-    pass
+    dataset = get_who_dataset()
 
 
 if __name__ == '__main__':
