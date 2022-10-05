@@ -190,8 +190,13 @@ def get_who_dataset() -> pd.DataFrame:
     for indicator_name, indicator_code in indicators.items():
         indicators[indicator_name] = indicators[indicator_name].rename({'NumericValue': indicator_name}, inplace=False, axis=1)
 
-    res = pd.merge(indicators['life expectancy'], indicators['adult mortality'], how='outer')
+    res = indicators['life expectancy']
+    for indicator_name in indicators.keys():
+        if indicator_name != 'life expectancy':
+            res = pd.merge(res, indicators[indicator_name], how='outer')
 
+    # TODO most null are in the HIV/AIDS column, consider dropping it completely before proceeding with the dropna by row
+    res = res.dropna(axis=0, how='any')
     return res
 
 def main():
