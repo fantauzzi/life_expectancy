@@ -144,7 +144,7 @@ def get_who_dataset() -> pd.DataFrame:
                          'polio': 'WHS3_49',
                          'diphtheria': 'WHS4_100',
                          'HIV/AIDS': 'WHS2_138',
-                         'thinness  1-19 years': 'NCD_BMI_MINUS2C'
+                         'thinness 1-19 years': 'NCD_BMI_MINUS2C'
                          }
 
     indicators: dict[str, pd.DataFrame] = {indicator_name: get_who_indicator(indicator_code, index='Id') for
@@ -178,6 +178,21 @@ def get_who_dataset() -> pd.DataFrame:
 
     indicators['bmi'].drop(['Dim1Type', 'Dim2Type', 'Dim2', 'Low', 'High', 'Comments'], inplace=True, axis=1)
     indicators['bmi'] = drop_btsx_inplace(indicators['bmi'], 'Dim1')
+
+    indicators['under-five deaths'].drop(['Dim1Type', 'Low', 'High'], inplace=True, axis=1)
+    indicators['under-five deaths'] = drop_btsx_inplace(indicators['under-five deaths'], 'Dim1')
+
+    indicators['HIV/AIDS'].drop(['Comments'], inplace=True, axis=1)
+
+    indicators['thinness 1-19 years'].drop(['Dim1Type', 'Dim2Type', 'Dim2', 'Low', 'High', 'Comments'], inplace=True, axis=1)
+    indicators['thinness 1-19 years'] = drop_btsx_inplace(indicators['thinness 1-19 years'], 'Dim1')
+
+    for indicator_name, indicator_code in indicators.items():
+        indicators[indicator_name] = indicators[indicator_name].rename({'NumericValue': indicator_name}, inplace=False, axis=1)
+
+    res = pd.merge(indicators['life expectancy'], indicators['adult mortality'], how='outer')
+
+    return res
 
 def main():
     """
