@@ -1,5 +1,32 @@
-import requests
 import pandas as pd
+import numpy as np
+import requests
+import ssl
+import urllib3
+import wbgapi as wb
+
+
+class CustomHttpAdapter(requests.adapters.HTTPAdapter):
+    # Credit: https://stackoverflow.com/a/73519818/4262324
+    # "Transport adapter" that allows us to use custom ssl_context.
+
+    def __init__(self, ssl_context=None, **kwargs):
+        self.ssl_context = ssl_context
+        super().__init__(**kwargs)
+
+    def init_poolmanager(self, connections, maxsize, block=False):
+        self.poolmanager = urllib3.poolmanager.PoolManager(
+            num_pools=connections, maxsize=maxsize,
+            block=block, ssl_context=self.ssl_context)
+
+
+def get_legacy_session():
+    # Credit: https://stackoverflow.com/a/73519818/4262324
+    ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+    ctx.options |= 0x4  # OP_LEGACY_SERVER_CONNECT
+    session = requests.session()
+    session.mount('https://', CustomHttpAdapter(ctx))
+    return session
 
 
 def get_who_table(url: str, index: str | None = None) -> pd.DataFrame:
@@ -44,6 +71,7 @@ def get_who_dimensions() -> pd.DataFrame:
     return df
 
 
+'''
 def get_who_life_expectancy() -> pd.DataFrame:
     """
     Fetches and returns the life expectancy information from the GHO OData API.
@@ -77,6 +105,7 @@ def get_who_life_expectancy() -> pd.DataFrame:
                             'Date'],
             inplace=True, axis=1)
     return df
+'''
 
 
 def get_who_indicator2(indicator: str, index: str | None = None) -> pd.DataFrame:
@@ -184,11 +213,13 @@ def get_who_dataset() -> pd.DataFrame:
 
     indicators['HIV/AIDS'].drop(['Comments'], inplace=True, axis=1)
 
-    indicators['thinness 1-19 years'].drop(['Dim1Type', 'Dim2Type', 'Dim2', 'Low', 'High', 'Comments'], inplace=True, axis=1)
+    indicators['thinness 1-19 years'].drop(['Dim1Type', 'Dim2Type', 'Dim2', 'Low', 'High', 'Comments'], inplace=True,
+                                           axis=1)
     indicators['thinness 1-19 years'] = drop_btsx_inplace(indicators['thinness 1-19 years'], 'Dim1')
 
     for indicator_name, indicator_code in indicators.items():
-        indicators[indicator_name] = indicators[indicator_name].rename({'NumericValue': indicator_name}, inplace=False, axis=1)
+        indicators[indicator_name] = indicators[indicator_name].rename({'NumericValue': indicator_name}, inplace=False,
+                                                                       axis=1)
 
     res = indicators['life expectancy']
     for indicator_name in indicators.keys():
@@ -196,8 +227,10 @@ def get_who_dataset() -> pd.DataFrame:
             res = pd.merge(res, indicators[indicator_name], how='outer')
 
     # TODO most null are in the HIV/AIDS column, consider dropping it completely before proceeding with the dropna by row
+    res.drop(['HIV/AIDS'], inplace=True, axis=1)
     res = res.dropna(axis=0, how='any')
     return res
+
 
 def main():
     """
@@ -207,6 +240,10 @@ def main():
     same set of dimensions: different indicators may, in general, have different dimensions. E.g. the "Life expectancy
     at birth" indicator includes dimensions for country, year and sex.
     """
+
+    # Total population by sex and country available. See indicator'26 (id=49)
+    # resp = get_legacy_session().get('https://population.un.org/dataportalapi/api/v1/indicators')
+    # resp_json = resp.json()
     who_indicators = get_who_indicators()
     who_indicators.to_csv('indicators.csv')
     lang_values = who_indicators.Language.unique()
@@ -216,9 +253,30 @@ def main():
 
     who_dimensions = get_who_dimensions()
 
-    life_exp = get_who_life_expectancy()
+    # life_exp = get_who_life_expectancy()
     dataset = get_who_dataset()
+    pd.options.display.max_rows = 1000
+    value_counts = dataset.SpatialDim.value_counts()
+    print(value_counts.iloc[np.lexsort([value_counts.index, value_counts.values])])
+    country_codes = list(dataset.SpatialDim.unique())
+    # country_codes2 = set(wb.economy.Series().index)
+
+    df = wb.data.DataFrame(['NY.GDP.MKTP.CD', 'SH.HIV.INCD.TL.P3'], country_codes, time=(2000, 2010, 2015), labels=True)
+    print(df)
 
 
 if __name__ == '__main__':
     main()
+
+'''
+NY.GDP.MKTP.CD 	GDP (current US$) 
+SH.XPD.GHED.GE.ZS  Domestic general government health expenditure (% of general government expenditure)
+SH.HIV.INCD.TL.P3 Incidence of HIV, all (per 1,000 uninfected population)  
+SH.H2O.SMDW.ZS People using safely managed drinking water services (% of population)
+SP.POP.TOTL 	Population, total
+SE.XPD.CTOT.ZS 	Current education expenditure, total (% of total expenditure in public institutions) 
+
+SH.H2O.BASW.ZS People using at least basic drinking water services (% of population) 
+SH.XPD.CHEX.GD.ZS 	Current health expenditure (% of GDP)
+GB.XPD.RSDV.GD.ZS Research and development expenditure (% of GDP) 	
+'''
