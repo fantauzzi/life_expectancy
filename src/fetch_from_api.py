@@ -241,6 +241,8 @@ def main():
     at birth" indicator includes dimensions for country, year and sex.
     """
 
+    pd.options.display.max_rows = 1000
+
     # Total population by sex and country available. See indicator'26 (id=49)
     # resp = get_legacy_session().get('https://population.un.org/dataportalapi/api/v1/indicators')
     # resp_json = resp.json()
@@ -255,18 +257,31 @@ def main():
 
     # life_exp = get_who_life_expectancy()
     dataset = get_who_dataset()
-    pd.options.display.max_rows = 1000
     value_counts = dataset.SpatialDim.value_counts()
     print(value_counts.iloc[np.lexsort([value_counts.index, value_counts.values])])
-    country_codes = list(dataset.SpatialDim.unique())
-    # country_codes2 = set(wb.economy.Series().index)
 
-    df = wb.data.DataFrame(['NY.GDP.MKTP.CD', 'SH.HIV.INCD.TL.P3'], country_codes, time=(2000, 2010, 2015), labels=True)
-    print(df)
+    country_codes = list(dataset.SpatialDim.unique())
+    un_code_to_indicator = {'NY.GDP.MKTP.CD': 'GDP',
+                            'SH.XPD.GHED.GE.ZS': 'health expenditure',
+                            'SH.HIV.INCD.TL.P3': 'hiv',
+                            'SH.H2O.SMDW.ZS': 'safe drinking water',
+                            'SP.POP.TOTL': 'population',
+                            'SE.XPD.CTOT.ZS': 'education expenditure'}
+
+    df = wb.data.DataFrame(un_code_to_indicator.keys(), country_codes, time=(2000, 2010, 2015), labels=True)
+    df.drop(['Country', 'Series'], axis=1, inplace=True)
+    df = df.stack()
+    df = df.unstack(1)
+    df['country'], df['year'] = zip(*df.index)
+    df.rename(un_code_to_indicator, inplace=True, axis=1)
+    # TODO there is an issue with the WHO and UN country codes, as they might now use the same values and/or
+    # dont' have the same countries.
+    pass
 
 
 if __name__ == '__main__':
     main()
+
 
 '''
 NY.GDP.MKTP.CD 	GDP (current US$) 
